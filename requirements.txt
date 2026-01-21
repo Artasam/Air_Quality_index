@@ -97,3 +97,5 @@ scikit-learn
 joblib
 python-dotenv
 pytz
+xgboost
+lightgbm
