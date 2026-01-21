@@ -1,5 +1,7 @@
 # Air Quality Index (AQI) Forecasting Project
 
+Streamlit app Deployed here: https://airqualityindex-br5gsqjzqcxrgtwfrihf3a.streamlit.app/
+
 A comprehensive end-to-end machine learning pipeline for predicting Air Quality Index (AQI) in the next 3 days using a 100% serverless stack.
 
 ## 🌟 Project Overview
