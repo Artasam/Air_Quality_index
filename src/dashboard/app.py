@@ -58,13 +58,17 @@ def get_aqi_category(aqi):
 @st.cache_resource
 def load_hopsworks_connection():
     """Load Hopsworks connection (cached)"""
-    load_dotenv()
-    api_key = os.getenv("HOPSWORKS_API_KEY")
+           # Try Streamlit secrets first (for cloud), then .env (for local)
+    try:
+        api_key = st.secrets["HOPSWORKS_API_KEY"]
+    except:
+        load_dotenv()
+        api_key = os.getenv("HOPSWORKS_API_KEY")
     
     if not api_key:
-        st.error("❌ HOPSWORKS_API_KEY not found in .env file")
+        st.error("❌ HOPSWORKS_API_KEY not found. Please add it to Streamlit secrets.")
         st.stop()
-    
+
     project = hopsworks.login(project=PROJECT_NAME, api_key_value=api_key)
     return project
 
