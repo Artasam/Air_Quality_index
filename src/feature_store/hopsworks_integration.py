@@ -61,28 +61,38 @@ PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
 
 
+# -----------------------------
+# GLOBAL SINGLETON PROJECT
+# -----------------------------
+_PROJECT = None
+
 def get_hopsworks_project():
-    """Initialize and return Hopsworks project."""
+    """Initialize and return a singleton Hopsworks project."""
+    global _PROJECT
+
+    if _PROJECT is not None:
+        return _PROJECT
+
     if not HOPSWORKS_AVAILABLE:
         raise ImportError("Hopsworks is not installed. Install with: pip install hopsworks")
-    
-    # Get API key from environment and sanitize (strip whitespace and quotes)
+
     api_key = os.getenv("HOPSWORKS_API_KEY")
     if not api_key:
         raise ValueError("HOPSWORKS_API_KEY environment variable not set")
+
     api_key = api_key.strip().strip('"').strip("'")
     if not api_key:
-        raise ValueError("HOPSWORKS_API_KEY environment variable is empty after sanitization. Ensure it is set correctly in the environment or .env file.")
+        raise ValueError("HOPSWORKS_API_KEY is empty after sanitization")
 
     try:
-        project = hopsworks.login(api_key_value=api_key)
-        return project
+        _PROJECT = hopsworks.login(api_key_value=api_key)
+        print("✓ Connected to Hopsworks (singleton session)")
+        return _PROJECT
     except Exception as e:
-        # Provide actionable guidance without printing secrets
-        masked = api_key[:4] + "..." + api_key[-4:] if len(api_key) > 8 else "(key hidden)"
+        masked = api_key[:4] + "..." + api_key[-4:] if len(api_key) > 8 else "(hidden)"
         raise RuntimeError(
-            "Failed to login to Hopsworks. Check your API key and project access. "
-            f"(Provided API key starts with: {masked})"
+            "Failed to login to Hopsworks. "
+            f"(API key starts with: {masked})"
         ) from e
 
 
@@ -1049,95 +1059,6 @@ def save_model_to_hopsworks(
                 shutil.rmtree(model_dir)
         except Exception:
             pass
-
-
-def load_model_from_hopsworks(
-    model_name: str,
-    version: Optional[int] = None,
-    download_path: Optional[Path] = None,
-    model_type: str = "sklearn"
-):
-    """
-    Load a model from Hopsworks Model Registry.
-    
-    Args:
-        model_name: Name of the model in the registry
-        version: Optional version number (defaults to latest)
-        download_path: Optional path to download model to (defaults to temp directory)
-        model_type: Framework type ('sklearn', 'tensorflow', 'torch', 'python')
-    
-    Returns:
-        Tuple of (model, version_number, model_path) or (None, None, None) on error
-    """
-    if not HOPSWORKS_AVAILABLE:
-        print("Hopsworks not available. Cannot load model from registry.")
-        return None, None, None
-    
-    import tempfile
-    import joblib
-    from pathlib import Path
-    
-    try:
-        project = get_hopsworks_project()
-        mr = project.get_model_registry()
-        
-        # Select the correct framework API
-        framework_map = {
-            'sklearn': mr.sklearn,
-            'tensorflow': mr.tensorflow,
-            'torch': mr.torch,
-            'python': mr.python
-        }
-        
-        if model_type not in framework_map:
-            print(f"Warning: Unknown model_type '{model_type}', defaulting to 'python'")
-            framework_api = mr.python
-        else:
-            framework_api = framework_map[model_type]
-        
-        # Get model
-        if version is not None:
-            model_meta = framework_api.get_model(name=model_name, version=version)
-        else:
-            model_meta = framework_api.get_model(name=model_name)
-        
-        print(f"✓ Found model '{model_name}' version {model_meta.version} in Hopsworks")
-        
-        # Download model
-        if download_path is None:
-            download_path = Path(tempfile.mkdtemp())
-        else:
-            download_path = Path(download_path)
-            download_path.mkdir(parents=True, exist_ok=True)
-        
-        # Download model artifacts
-        model_dir = download_path / f"{model_name}_v{model_meta.version}"
-        model_dir.mkdir(parents=True, exist_ok=True)
-        
-        model_meta.download(str(model_dir))
-        print(f"✓ Downloaded model to: {model_dir}")
-        
-        # Load the model file (look for .pkl files)
-        model_file = None
-        for pkl_file in model_dir.rglob("*.pkl"):
-            model_file = pkl_file
-            break
-        
-        if model_file is None:
-            # Try to load from directory directly (for some frameworks)
-            model = framework_api.load_model(model_name, version=model_meta.version if version is None else version)
-            return model, model_meta.version, str(model_dir)
-        else:
-            # Load using joblib
-            model = joblib.load(model_file)
-            return model, model_meta.version, str(model_file)
-        
-    except Exception as e:
-        print(f"❌ Error loading model from Hopsworks: {e}")
-        import traceback
-        traceback.print_exc()
-        return None, None, None
-
 
 # Example usage
 if __name__ == "__main__":

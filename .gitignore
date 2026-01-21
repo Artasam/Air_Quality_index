@@ -46,6 +46,11 @@ data/processed/*.csv
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 
+# Ignore AQI forecast CSV files
+daily_3day_aqi_forecast.csv
+hourly_3day_aqi_forecast.csv
+
+
 # Models
 models/*.pkl
 models/*.h5

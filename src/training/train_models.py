@@ -12,6 +12,13 @@ import xgboost as xgb
 import lightgbm as lgb
 import os
 
+# -----------------------------
+# CI-SAFE HOPSWORKS SETTINGS
+# -----------------------------
+os.environ.setdefault("HOPSWORKS_UPLOAD_CONCURRENCY", "1")
+os.environ.setdefault("HOPSWORKS_CLIENT_MAX_RETRIES", "5")
+os.environ.setdefault("HOPSWORKS_CLIENT_RETRY_BACKOFF", "2")
+
 # Ensure project root is on sys.path so `src` imports work when running script directly
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
