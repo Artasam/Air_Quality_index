@@ -58,13 +58,11 @@ This project implements a complete ML pipeline for AQI forecasting with:
 ## 🛠️ Technology Stack
 
 - **Python 3.10+**
+- **Open-Meteo API** - Weather and air quality data
 - **Scikit-learn** - Traditional ML models
 - **XGBoost** - Gradient boosting models
-- **Hopsworks** (optional) - Feature Store
-- **Apache Airflow** (optional) - Workflow orchestration
+- **Hopsworks** - Feature Store
 - **Streamlit** - Web dashboard
-- **Flask/FastAPI** - API backend
-- **Open-Meteo API** - Weather and air quality data
 - **SHAP** - Model explainability
 - **GitHub Actions** - CI/CD automation
 
@@ -269,10 +267,7 @@ Go to your repository → **Settings** → **Secrets and variables** → **Actio
 
 The Streamlit dashboard provides:
 - Real-time AQI predictions for next 3 days
-- Interactive time series visualizations
-- Current vs predicted AQI comparison
-- Feature importance analysis (SHAP)
-- Historical trend analysis
+- Hourly AQI forecast Graph
 - Alerts for hazardous AQI levels
 
 ## 🔍 Model Explainability
@@ -321,21 +316,5 @@ See the [CI/CD Pipeline](#-cicd-pipeline) section above for detailed instruction
 ## 📄 License
 
 This project is open source and available under the MIT License.
-
-## 🎯 Next Steps
-
-- [ ] Integrate with Hopsworks Feature Store
-- [ ] Add Vertex AI integration
-- [ ] Implement model versioning
-- [ ] Add more advanced deep learning models
-- [ ] Create REST API with FastAPI
-- [ ] Add unit tests
-- [ ] Deploy to cloud (AWS/GCP/Azure)
-
-## 📞 Support
-
-For issues and questions, please open an issue on GitHub.
-
----
 
 **Built with ❤️ for better air quality monitoring**
