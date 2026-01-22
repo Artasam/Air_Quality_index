@@ -106,13 +106,13 @@ Air Quality Index/
 
 - Python 3.10 or higher
 - Git
-- (Optional) Hopsworks account for Feature Store
+- Hopsworks account for Feature Store
 
 ### Installation
 
 1. **Clone the repository**
    ```bash
-   git clone <your-repo-url>
+   git clone https://github.com/Artasam/Air_Quality_index.git
    cd "Air Quality Index"
    ```
 
@@ -130,9 +130,9 @@ Air Quality Index/
 4. **Set up environment variables**
    Create a `.env` file in the project root:
    ```env
-   LAT=33.7215
-   LON=73.0433
-   CITY=Islamabad
+   LAT=33.5973
+   LON=73.0479
+   CITY=Rawalpindi
    ```
 
 ### Usage
