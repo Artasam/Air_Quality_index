@@ -69,7 +69,7 @@ def load_hopsworks_connection():
         st.error("❌ HOPSWORKS_API_KEY not found. Please add it to Streamlit secrets.")
         st.stop()
 
-    project = hopsworks.login(project=PROJECT_NAME, api_key_value=api_key)
+    project = hopsworks.login(project=PROJECT_NAME, api_key_value=api_key, host="eu-west.cloud.hopsworks.ai")
     return project
 
 @st.cache_data(ttl=3600)

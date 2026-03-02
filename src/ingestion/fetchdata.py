@@ -15,7 +15,7 @@ CITY = os.getenv("CITY", "Rawalpindi")
 
 # Date range for historical data (in Pakistan dates)
 START_DATE = "2025-01-01"  # Pakistan date
-END_DATE = "2026-01-15"    # Pakistan date
+END_DATE = "2026-03-01"    # Pakistan date
 
 OUTPUT_DIR = Path(__file__).resolve().parents[2] / "data" / "raw"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)

@@ -23,7 +23,8 @@ gitdb==4.0.12
 GitPython==3.1.46
 greenlet==3.3.0
 grpcio==1.76.0
-hopsworks==4.2.10
+# hopsworks==4.2.10
+hopsworks==4.7.1
 hopsworks-aiomysql==0.2.1
 idna==3.11
 javaobj-py3==0.4.4
