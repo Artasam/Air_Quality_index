@@ -222,8 +222,8 @@ def save_features_to_hopsworks(
         wait_for_materialization = hops_major_minor >= 4.7 and wait_for_insert_job
         
         write_opts = {
-            "start_offline_materialization": True,   # ← Corrected key for 4.7.2+
-            "wait_for_job": wait_for_materialization
+            "start_offline_materialization": False,   # ← Corrected key for 4.7.2+
+            "wait_for_job": False
         }
         
         if wait_for_materialization:
