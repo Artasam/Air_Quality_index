@@ -17,7 +17,7 @@ from datetime import timedelta
 # Page config
 st.set_page_config(
     page_title="AQI Forecast Dashboard",
-    page_icon="🌡️",
+    page_icon="💨",
     layout="wide"
 )
 
@@ -206,7 +206,7 @@ def generate_forecast(df, model):
     return forecast_df, daily_forecast, last_timestamp
 
 # ================= MAIN APP =================
-st.title("🌡️ Air Quality Index (AQI) Forecast Dashboard")
+st.title("💨 Air Quality Index (AQI) Forecast Dashboard")
 st.markdown(f"### 📍 {CITY_NAME} - Next 3 Days Prediction")
 
 # Sidebar
