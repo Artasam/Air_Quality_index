@@ -223,7 +223,7 @@ def save_features_to_hopsworks(
         
         write_opts = {
             "start_offline_materialization": False,   # ← Corrected key for 4.7.2+
-            "wait_for_job": False
+            "wait_for_job": wait_for_materialization
         }
         
         if wait_for_materialization:
