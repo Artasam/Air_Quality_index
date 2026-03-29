@@ -23,7 +23,7 @@ st.set_page_config(
 
 # ================= CONFIG =================
 LOCAL_TZ = pytz.timezone("Asia/Karachi")
-PROJECT_NAME = "AQI_Forecasting"
+PROJECT_NAME = "AQI_Prediction_ak"
 FEATURE_GROUP_NAME = "aqi_features"
 FEATURE_GROUP_VERSION = 1
 CITY_NAME = "Rawalpindi"
