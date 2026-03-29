@@ -13,9 +13,12 @@ LAT = float(os.getenv("LAT", "33.5973"))
 LON = float(os.getenv("LON", "73.0479"))
 CITY = os.getenv("CITY", "Rawalpindi")
 
+# Pakistan timezone (defined early – used by END_DATE and filters)
+PAKISTAN_TZ = pytz.timezone('Asia/Karachi')
+
 # Date range for historical data (in Pakistan dates)
 START_DATE = "2025-01-01"  # Pakistan date
-END_DATE = "2026-03-29"    # Pakistan date
+END_DATE = datetime.now(PAKISTAN_TZ).strftime("%Y-%m-%d")  # Auto: today's Pakistan date
 
 OUTPUT_DIR = Path(__file__).resolve().parents[2] / "data" / "raw"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -25,9 +28,6 @@ WEATHER_URL = "https://archive-api.open-meteo.com/v1/archive"
 
 AIR_PARAMS = ["pm10", "pm2_5", "carbon_monoxide", "nitrogen_dioxide", "sulphur_dioxide", "ozone"]
 WEATHER_PARAMS = ["temperature_2m", "relative_humidity_2m", "surface_pressure", "wind_speed_10m", "wind_direction_10m", "precipitation"]
-
-# Pakistan timezone
-PAKISTAN_TZ = pytz.timezone('Asia/Karachi')
 
 
 # ==================== HELPERS ====================
@@ -104,6 +104,14 @@ def main():
     df["city"] = CITY
     df["latitude"] = LAT
     df["longitude"] = LON
+
+    # ── Filter out future hours ──────────────────────────────────
+    now_pk = datetime.now(PAKISTAN_TZ)
+    before_future = len(df)
+    df = df[df["timestamp"] <= now_pk].copy()
+    future_removed = before_future - len(df)
+    if future_removed:
+        print(f"✓ Removed {future_removed} future-hour records (beyond {now_pk.strftime('%Y-%m-%d %H:%M %Z')})")
 
     # Drop duplicates and missing values
     before_dedup = len(df)

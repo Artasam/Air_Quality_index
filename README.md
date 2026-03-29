@@ -44,10 +44,11 @@ This project implements a complete ML pipeline for AQI forecasting with:
 - The hourly feature pipeline uses a small augmentation (`BACKFILL_AUGMENT_STD=0.01`) to diversify historical training examples and help prevent model overfitting
 
 ### ✅ Web Application Dashboard
-- Streamlit dashboard for real-time predictions
-- Interactive visualizations with Plotly
-- Display predictions for next 3 days
-- Historical comparison charts
+- Modern, dynamic Streamlit dashboard for real-time predictions
+- Dynamic fetching of the best model from Hopsworks Model Registry
+- Interactive visualizations with Plotly (hourly 72-hour forecast and visual AQI zones)
+- Summarized predictions for the next 3 days with dynamic visual cards
+- Real-time hazard alerts and recommended actions
 
 ### ✅ Advanced Analytics Features
 - Exploratory Data Analysis (EDA) notebooks
@@ -82,6 +83,8 @@ Air Quality Index/
 │   │   └── fetch_realtime.py     # Real-time data
 │   ├── features/         # Feature engineering
 │   │   └── features_extraction.py
+│   ├── feature_store/    # Feature Store Integration
+│   │   └── hopsworks_integration.py
 │   ├── training/         # Model training
 │   │   └── train_models.py
 │   ├── prediction/       # Prediction utilities
@@ -96,6 +99,9 @@ Air Quality Index/
 │   └── workflows/        # CI/CD pipelines
 │       ├── feature_pipeline.yml
 │       └── training_pipeline.yml
+├── AQI_Project_Report.pdf # Comprehensive Project Report
+├── daily_3day_aqi_forecast.csv    # Exported daily 3-day forecast
+├── hourly_3day_aqi_forecast.csv   # Exported hourly 3-day forecast
 ├── requirements.txt
 └── README.md
 ```
@@ -143,12 +149,10 @@ Air Quality Index/
 python src/ingestion/fetchdata.py
 
 # Backfill historical files into processed features (one-off or range)
-python src/ingestion/backfill.py --start-date 2025-01-01 --end-date 2025-12-31 --augment-std 0.01
+python src/ingestion/backfill.py --start-date 2025-01-01 --end-date 2026-03-29 --augment-std 0.01
 
 # Run feature extraction for the latest raw file
 python src/features/features_extraction.py
-```
-python src/ingestion/fetchdata.py
 ```
 
 #### 2. Extract Features
@@ -265,10 +269,12 @@ Go to your repository → **Settings** → **Secrets and variables** → **Actio
 
 ## 📈 Dashboard Features
 
-The Streamlit dashboard provides:
-- Real-time AQI predictions for next 3 days
-- Hourly AQI forecast Graph
-- Alerts for hazardous AQI levels
+The modernized Streamlit dashboard (`src/dashboard/app.py`) provides:
+- **Real-time API Updates:** Tracks the latest data age dynamically to ensure freshness.
+- **Dynamic Model Selection:** Automatically evaluates model metrics from Hopsworks and runs predictions using the most performant registered model.
+- **3-Day Forecast Cards:** Displays the daily predicted AQI values styled dynamically by health category (Good to Hazardous).
+- **Hazard Alerts:** Warns users visually of extreme pollution events and provides actionable safety recommendations.
+- **Interactive 72-Hour Plotted Trend:** Integrates with Plotly to render an interactive time-series forecast graph populated with AQI health threshold regions.
 
 ## 🔍 Model Explainability
 
