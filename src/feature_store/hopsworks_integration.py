@@ -219,35 +219,69 @@ def save_features_to_hopsworks(
         )
 
         # ---------------------------------------------------------------
-        # FIX: Do NOT start offline materialization on every hourly insert.
+        # MATERIALIZATION STRATEGY
         #
-        # Root cause of the "materialization already running" error:
-        #   - start_offline_materialization: True spawns a new Spark job
-        #     on EVERY insert call.
-        #   - The hourly feature pipeline runs every 60 minutes, but each
-        #     Spark job takes longer than that on the free Hopsworks tier.
-        #   - Jobs pile up → Hopsworks raises "materialization already running"
-        #     on the next insert → pipeline crashes → dashboard goes stale.
+        # Problem: inserting with start_offline_materialization=True every
+        # hour spawns a new Spark job each run. Each job takes ~15-30 min on
+        # the free Hopsworks tier. Jobs overlap → "materialization already
+        # running" error → pipeline crashes → offline store goes stale.
         #
-        # Correct pattern (per Hopsworks docs):
-        #   - Insert with start_offline_materialization: False  → online store
-        #     is updated immediately, no Spark job, no conflict.
-        #   - Trigger materialization ONCE per day from the training pipeline
-        #     (see trigger_offline_materialization_for_training below) before
-        #     reading the offline store for model training.
+        # Problem with False: data piles up in Kafka/online store only.
+        # The offline store (what training reads) never gets updated.
+        # Last updated stays stuck at March 22 as seen in the UI.
+        #
+        # Solution: insert WITHOUT materialization every hour (fast, no
+        # Spark, no conflict). Then separately run one materialization job
+        # and WAIT for it to finish — but only once every MATERIALIZATION_INTERVAL_HOURS,
+        # enforced by a local lock file. This way the offline store stays
+        # fresh without jobs piling up.
         # ---------------------------------------------------------------
-        write_opts = {
-            "start_offline_materialization": False,  # ← KEY FIX: no Spark job on insert
-            "wait_for_job": False,
-        }
+        MATERIALIZATION_INTERVAL_HOURS = int(
+            os.getenv("HOPS_MATERIALIZATION_INTERVAL_HOURS", "6")
+        )
+        lock_file = PROCESSED_DIR / ".last_materialization"
 
-        print(f"Inserting {len(features_df)} rows into online store "
-              f"(offline materialization intentionally skipped to prevent job conflicts)...")
+        def _should_materialize() -> bool:
+            """Return True if enough time has passed since last materialization."""
+            if not lock_file.exists():
+                return True
+            try:
+                last_ts = float(lock_file.read_text().strip())
+                elapsed_hours = (time.time() - last_ts) / 3600
+                return elapsed_hours >= MATERIALIZATION_INTERVAL_HOURS
+            except Exception:
+                return True  # if lock file is corrupt, materialize to be safe
+
+        def _record_materialization():
+            """Write current timestamp to lock file."""
+            try:
+                lock_file.write_text(str(time.time()))
+            except Exception:
+                pass
+
+        do_materialize = _should_materialize()
+
+        if do_materialize:
+            print(f"Inserting {len(features_df)} rows WITH offline materialization "
+                  f"(interval={MATERIALIZATION_INTERVAL_HOURS}h reached — waiting for Spark job)...")
+        else:
+            print(f"Inserting {len(features_df)} rows WITHOUT offline materialization "
+                  f"(last materialization < {MATERIALIZATION_INTERVAL_HOURS}h ago — skipping Spark job)...")
+
+        write_opts = {
+            "start_offline_materialization": do_materialize,
+            "wait_for_job": do_materialize,  # wait=True so the job finishes before next run starts
+        }
 
         fg.insert(features_df, write_options=write_opts)
 
-        print(f"✓ Inserted {len(features_df)} rows. Online store updated immediately.")
-        print("  Offline materialization will be triggered once by the daily training pipeline.")
+        if do_materialize:
+            _record_materialization()
+            print(f"✓ Inserted {len(features_df)} rows + offline materialization complete.")
+            print(f"  Next materialization in ~{MATERIALIZATION_INTERVAL_HOURS}h.")
+        else:
+            print(f"✓ Inserted {len(features_df)} rows into online store.")
+            print(f"  Offline store will be refreshed on the next scheduled materialization.")
 
         # Optional commit (safe no-op if unsupported)
         try:
@@ -261,15 +295,25 @@ def save_features_to_hopsworks(
 
     except Exception as e:
         msg = str(e).lower()
-        if "materializ" in msg or "no hudi properties" in msg or "no data has been written" in msg:
-            print("⚠️ Materialization-related error detected. Retrying with materialization disabled...")
+        if "already running" in msg or "materializ" in msg:
+            print("⚠️ Materialization conflict detected. Retrying insert without materialization...")
             try:
-                # ── FIX: also use False in the fallback, not True ──
                 fg.insert(features_df, write_options={
                     "start_offline_materialization": False,
                     "wait_for_job": False,
                 })
-                print("✓ Fallback insert succeeded (offline materialization skipped)")
+                print("✓ Fallback insert succeeded (data in online store; offline refreshes next cycle).")
+                return fg
+            except Exception as back_exc:
+                print(f"Fallback insert failed: {back_exc}")
+        elif "no hudi properties" in msg or "no data has been written" in msg:
+            print("⚠️ HUDI/materialization error. Retrying without materialization...")
+            try:
+                fg.insert(features_df, write_options={
+                    "start_offline_materialization": False,
+                    "wait_for_job": False,
+                })
+                print("✓ Fallback insert succeeded.")
                 return fg
             except Exception as back_exc:
                 print(f"Fallback insert failed: {back_exc}")
