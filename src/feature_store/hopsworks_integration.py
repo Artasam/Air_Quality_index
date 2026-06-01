@@ -312,7 +312,7 @@ def trigger_offline_materialization_for_training(
         print(f"Triggering offline materialization for '{feature_group_name}' "
               f"({'blocking until complete' if wait else 'non-blocking'})...")
 
-        # Use start_offline_materialization method if available (preferred, SDK 4.x)
+        # Strategy 1: use a dedicated materialization method if the SDK exposes one
         for method_name in ['start_offline_materialization', 'start_offline_backfill',
                             'start_backfill', 'start_materialization']:
             if hasattr(fg, method_name):
@@ -324,31 +324,41 @@ def trigger_offline_materialization_for_training(
                         if success:
                             print(f"✓ Offline materialization complete (via fg.{method_name}())")
                         else:
-                            print(f"⚠️ Materialization job finished but reported failure. "
-                                  f"Check Hopsworks UI for details.")
+                            print(f"⚠️ Materialization job reported failure — check Hopsworks UI.")
                     else:
-                        print(f"✓ Offline materialization triggered (via fg.{method_name}()). "
-                              f"Running in background.")
+                        print(f"✓ Offline materialization triggered (via fg.{method_name}(), "
+                              f"running in background).")
                     return True
                 except Exception as method_err:
                     print(f"  fg.{method_name}() failed: {method_err}. Trying next method...")
                     continue
 
-        # Fallback: insert an empty frame just to get the job handle
-        print("Direct materialization method not available. Using insert-based trigger...")
-        job, _ = fg.insert(
-            pd.DataFrame(),
-            write_options={
-                "start_offline_materialization": True,
-                "wait_for_job": wait,
-            }
-        )
-        print("✓ Offline materialization triggered via insert fallback.")
-        return True
+        # Strategy 2: get the materialization job object from the feature group and run it
+        # (SDK 4.x exposes fg.materialization_job for exactly this use case)
+        try:
+            mat_job = getattr(fg, 'materialization_job', None)
+            if mat_job is not None:
+                print("Triggering via fg.materialization_job.run()...")
+                execution = mat_job.run(await_termination=wait)
+                success = getattr(execution, 'success', True)
+                if success:
+                    print("✓ Offline materialization complete (via fg.materialization_job)")
+                else:
+                    print("⚠️ Materialization job reported failure — check Hopsworks UI.")
+                return True
+        except Exception as job_err:
+            print(f"  fg.materialization_job.run() failed: {job_err}")
+
+        # Strategy 3: no direct method available — skip gracefully.
+        # The offline store is updated by Hopsworks on its own schedule.
+        # The read below will still work using whatever data is already materialized.
+        print("No direct materialization method available on this SDK version.")
+        print("Skipping — offline store will be read as-is (data is current to last materialization).")
+        return False
 
     except Exception as e:
         print(f"⚠️ Could not trigger offline materialization: {e}")
-        print("  Training will attempt a direct read anyway — data may be slightly stale.")
+        print("  Training will proceed with a direct read — data current to last materialization.")
         return False
 
 
