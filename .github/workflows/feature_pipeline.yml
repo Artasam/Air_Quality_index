@@ -6,26 +6,40 @@ on:
     - cron: '0 * * * *'
   workflow_dispatch:  # Allow manual triggering
 
+# ---------------------------------------------------------------------
+# FIX: Prevent overlapping runs.
+# If a previous hourly run is still going when the next one starts,
+# the old run is cancelled automatically. This prevents two pipeline
+# instances from inserting to Hopsworks at the same time, which was
+# a secondary cause of "materialization already running" conflicts.
+# ---------------------------------------------------------------------
+concurrency:
+  group: feature-pipeline
+  cancel-in-progress: true
+
 jobs:
   fetch-realtime-data:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    
+    # Reduced from 30 → 15 minutes.
+    # The feature pipeline should complete in ~5 min. If it hangs for 15,
+    # something is wrong — kill it fast so the next scheduled run isn't blocked.
+    timeout-minutes: 15
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
           cache: 'pip'
-      
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      
+
       - name: Create .env file
         run: |
           echo "LAT=${LAT:-33.5973}" >> .env
@@ -38,11 +52,11 @@ jobs:
           LAT: ${{ secrets.LAT }}
           LON: ${{ secrets.LON }}
           CITY: ${{ secrets.CITY }}
-      
+
       - name: Run feature pipeline
         run: |
           python src/ingestion/fetch_realtime.py
-      
+
       - name: Upload logs (on failure)
         if: failure()
         uses: actions/upload-artifact@v4
