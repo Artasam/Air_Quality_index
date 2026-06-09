@@ -106,22 +106,50 @@ _CREATED_FEATURE_GROUPS = set()
 _CREATED_FEATURE_VIEWS = set()
 
 
-def stop_running_job_executions(job, timeout_seconds: int = 30) -> bool:
+def stop_running_job_executions(job, project=None, fg_name=None, version=1, timeout_seconds: int = 30) -> bool:
     """
-    Checks for any running executions of the given job, stops them,
+    Checks for any running executions of the given job, stops/deletes them,
     and waits until they are no longer in the RUNNING state.
-    Returns True if all running executions were successfully stopped/terminated,
-    or if no executions were running.
     """
+    print(f"Checking for stuck/running materialization executions...")
+    
+    # Try to get job via project.get_jobs_api() if not provided or to be safe
+    if job is None and project is not None and fg_name is not None:
+        try:
+            jobs_api = project.get_jobs_api()
+            job_name = f"{fg_name}_{version}_offline_fg_materialization"
+            print(f"Retrieving job '{job_name}' via Jobs API...")
+            job = jobs_api.get_job(job_name)
+        except Exception as api_err:
+            print(f"Warning: Could not retrieve job via Jobs API: {api_err}")
+
     if job is None:
+        print("Warning: Job object is None. Cannot stop executions.")
         return True
+
     try:
-        if not hasattr(job, "get_executions"):
-            return True
-        executions = job.get_executions()
-        if not executions:
-            return True
+        # Get executions
+        executions = []
+        if hasattr(job, "get_executions"):
+            try:
+                executions = job.get_executions()
+            except Exception as e:
+                print(f"Warning: Failed to call job.get_executions(): {e}")
         
+        # If still empty and we have project, try via project.get_jobs_api()
+        if not executions and project is not None:
+            try:
+                jobs_api = project.get_jobs_api()
+                if hasattr(jobs_api, "get_executions"):
+                    executions = jobs_api.get_executions(job)
+            except Exception as e:
+                print(f"Warning: Failed to call jobs_api.get_executions(job): {e}")
+
+          # If still empty, return
+        if not executions:
+            print("No executions found for this job.")
+            return True
+
         running_executions = []
         for exec_obj in executions:
             state = None
@@ -130,26 +158,56 @@ def stop_running_job_executions(job, timeout_seconds: int = 30) -> bool:
             elif hasattr(exec_obj, "state"):
                 state = exec_obj.state
             
-            if state and str(state).upper() == "RUNNING":
+            exec_id = getattr(exec_obj, 'id', 'unknown')
+            print(f"Execution {exec_id} status: {state}")
+            
+            # Hopsworks terminal states are FINISHED, FAILED, KILLED.
+            # Any state other than these is active/stuck (e.g. RUNNING, ACCEPTED, SUBMITTED, INITIALIZING)
+            if state and str(state).upper() not in ["FINISHED", "FAILED", "KILLED"]:
                 running_executions.append(exec_obj)
         
         if not running_executions:
+            print("No active or running executions found.")
             return True
-        
+            
         for exec_obj in running_executions:
             exec_id = getattr(exec_obj, 'id', 'unknown')
-            print(f"Found running job execution {exec_id}. Stopping it to avoid materialization conflicts...")
-            try:
-                exec_obj.stop()
-            except Exception as stop_exc:
-                print(f"Warning: Failed to call stop() on execution {exec_id}: {stop_exc}")
+            state = getattr(exec_obj, 'state', None) or (exec_obj.get_state() if hasattr(exec_obj, 'get_state') else 'unknown')
+            print(f"Stopping execution {exec_id} (current state: '{state}')...")
+            
+            # Try stop() first, then delete() as fallback
+            stopped = False
+            if hasattr(exec_obj, "stop"):
+                try:
+                    exec_obj.stop()
+                    print(f"✓ Sent stop command to execution {exec_id}.")
+                    stopped = True
+                except Exception as stop_exc:
+                    print(f"Warning: exec_obj.stop() failed: {stop_exc}")
+            
+            if not stopped and hasattr(exec_obj, "delete"):
+                try:
+                    exec_obj.delete()
+                    print(f"✓ Sent delete/kill command to execution {exec_id}.")
+                    stopped = True
+                except Exception as del_exc:
+                    print(f"Warning: exec_obj.delete() failed: {del_exc}")
+                    
+            if not stopped:
+                print(f"Warning: Could not terminate execution {exec_id} programmatically.")
         
-        # Wait for them to transition out of RUNNING
+        # Wait for them to transition out of active states
         start_time = time.time()
         while time.time() - start_time < timeout_seconds:
             still_running = False
             try:
-                fresh_executions = job.get_executions()
+                # Re-fetch executions to check state
+                fresh_executions = []
+                if hasattr(job, "get_executions"):
+                    fresh_executions = job.get_executions()
+                elif project is not None:
+                    fresh_executions = project.get_jobs_api().get_executions(job)
+                
                 for exec_obj in fresh_executions:
                     exec_id = getattr(exec_obj, 'id', '')
                     if any(getattr(r, 'id', None) == exec_id for r in running_executions):
@@ -158,21 +216,22 @@ def stop_running_job_executions(job, timeout_seconds: int = 30) -> bool:
                             state = exec_obj.get_state()
                         elif hasattr(exec_obj, "state"):
                             state = exec_obj.state
-                        if state and str(state).upper() == "RUNNING":
+                        if state and str(state).upper() not in ["FINISHED", "FAILED", "KILLED"]:
                             still_running = True
                             break
-            except Exception:
+            except Exception as wait_exc:
+                print(f"Warning: Error checking execution state while waiting: {wait_exc}")
                 still_running = True
-            
+                
             if not still_running:
-                print("✓ All running executions stopped successfully.")
+                print("✓ All active executions successfully stopped/terminated.")
                 return True
             time.sleep(3)
-        
-        print("Warning: Timeout reached waiting for running executions to stop.")
+              
+        print("Warning: Timeout reached. Some executions may still be running/stopping.")
         return False
     except Exception as e:
-        print(f"Warning: Failed to stop running job executions: {e}")
+        print(f"Warning: Failed to process job executions: {e}")
         return False
 
 
@@ -336,8 +395,13 @@ def save_features_to_hopsworks(
                   f"(interval={MATERIALIZATION_INTERVAL_HOURS}h reached — waiting for Spark job)...")
             try:
                 mat_job = getattr(fg, 'materialization_job', None)
-                if mat_job is not None:
-                    stop_running_job_executions(mat_job, timeout_seconds=30)
+                stop_running_job_executions(
+                    mat_job, 
+                    project=project, 
+                    fg_name=feature_group_name, 
+                    version=fg.version if hasattr(fg, 'version') else 1,
+                    timeout_seconds=30
+                )
             except Exception as e:
                 print(f"Warning: Could not stop running job executions: {e}")
         else:
@@ -435,8 +499,13 @@ def trigger_offline_materialization_for_training(
         # Stop any running materialization executions first to prevent conflicts
         try:
             mat_job = getattr(fg, 'materialization_job', None)
-            if mat_job is not None:
-                stop_running_job_executions(mat_job, timeout_seconds=30)
+            stop_running_job_executions(
+                mat_job, 
+                project=project, 
+                fg_name=feature_group_name, 
+                version=fg.version if hasattr(fg, 'version') else 1,
+                timeout_seconds=30
+            )
         except Exception as e:
             print(f"Warning: Could not stop running job executions: {e}")
 
