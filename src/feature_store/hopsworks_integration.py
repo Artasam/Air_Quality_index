@@ -106,6 +106,76 @@ _CREATED_FEATURE_GROUPS = set()
 _CREATED_FEATURE_VIEWS = set()
 
 
+def stop_running_job_executions(job, timeout_seconds: int = 30) -> bool:
+    """
+    Checks for any running executions of the given job, stops them,
+    and waits until they are no longer in the RUNNING state.
+    Returns True if all running executions were successfully stopped/terminated,
+    or if no executions were running.
+    """
+    if job is None:
+        return True
+    try:
+        if not hasattr(job, "get_executions"):
+            return True
+        executions = job.get_executions()
+        if not executions:
+            return True
+        
+        running_executions = []
+        for exec_obj in executions:
+            state = None
+            if hasattr(exec_obj, "get_state"):
+                state = exec_obj.get_state()
+            elif hasattr(exec_obj, "state"):
+                state = exec_obj.state
+            
+            if state and str(state).upper() == "RUNNING":
+                running_executions.append(exec_obj)
+        
+        if not running_executions:
+            return True
+        
+        for exec_obj in running_executions:
+            exec_id = getattr(exec_obj, 'id', 'unknown')
+            print(f"Found running job execution {exec_id}. Stopping it to avoid materialization conflicts...")
+            try:
+                exec_obj.stop()
+            except Exception as stop_exc:
+                print(f"Warning: Failed to call stop() on execution {exec_id}: {stop_exc}")
+        
+        # Wait for them to transition out of RUNNING
+        start_time = time.time()
+        while time.time() - start_time < timeout_seconds:
+            still_running = False
+            try:
+                fresh_executions = job.get_executions()
+                for exec_obj in fresh_executions:
+                    exec_id = getattr(exec_obj, 'id', '')
+                    if any(getattr(r, 'id', None) == exec_id for r in running_executions):
+                        state = None
+                        if hasattr(exec_obj, "get_state"):
+                            state = exec_obj.get_state()
+                        elif hasattr(exec_obj, "state"):
+                            state = exec_obj.state
+                        if state and str(state).upper() == "RUNNING":
+                            still_running = True
+                            break
+            except Exception:
+                still_running = True
+            
+            if not still_running:
+                print("✓ All running executions stopped successfully.")
+                return True
+            time.sleep(3)
+        
+        print("Warning: Timeout reached waiting for running executions to stop.")
+        return False
+    except Exception as e:
+        print(f"Warning: Failed to stop running job executions: {e}")
+        return False
+
+
 def create_feature_group(project, feature_group_name: str, description: str = "",
                          primary_key: list = None, event_time: str = "timestamp"):
     """Create a feature group in Hopsworks (4.7.2+ compatible)."""
@@ -264,6 +334,12 @@ def save_features_to_hopsworks(
         if do_materialize:
             print(f"Inserting {len(features_df)} rows WITH offline materialization "
                   f"(interval={MATERIALIZATION_INTERVAL_HOURS}h reached — waiting for Spark job)...")
+            try:
+                mat_job = getattr(fg, 'materialization_job', None)
+                if mat_job is not None:
+                    stop_running_job_executions(mat_job, timeout_seconds=30)
+            except Exception as e:
+                print(f"Warning: Could not stop running job executions: {e}")
         else:
             print(f"Inserting {len(features_df)} rows WITHOUT offline materialization "
                   f"(last materialization < {MATERIALIZATION_INTERVAL_HOURS}h ago — skipping Spark job)...")
@@ -355,6 +431,14 @@ def trigger_offline_materialization_for_training(
 
         print(f"Triggering offline materialization for '{feature_group_name}' "
               f"({'blocking until complete' if wait else 'non-blocking'})...")
+
+        # Stop any running materialization executions first to prevent conflicts
+        try:
+            mat_job = getattr(fg, 'materialization_job', None)
+            if mat_job is not None:
+                stop_running_job_executions(mat_job, timeout_seconds=30)
+        except Exception as e:
+            print(f"Warning: Could not stop running job executions: {e}")
 
         # Strategy 1: use a dedicated materialization method if the SDK exposes one
         for method_name in ['start_offline_materialization', 'start_offline_backfill',
