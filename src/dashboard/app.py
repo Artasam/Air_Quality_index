@@ -186,9 +186,13 @@ def load_feature_data(_project):
     fs = _project.get_feature_store()
     fg = fs.get_feature_group(name=FEATURE_GROUP_NAME, version=FEATURE_GROUP_VERSION)
     
+    try:
+        df = fg.read(online=True)
+    except Exception as e:
+        df = fg.read()
+        
     df = (
-        fg.read()
-          .query("city == @CITY_NAME")
+        df.query("city == @CITY_NAME")
           .sort_values("timestamp")
           .reset_index(drop=True)
     )
