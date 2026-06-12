@@ -191,6 +191,11 @@ def load_feature_data(_project):
     except Exception as e:
         df = fg.read()
         
+    if df["timestamp"].dt.tz is None:
+        df["timestamp"] = df["timestamp"].dt.tz_localize("UTC")
+    else:
+        df["timestamp"] = df["timestamp"].dt.tz_convert("UTC")
+        
     df = (
         df.query("city == @CITY_NAME")
           .sort_values("timestamp")
