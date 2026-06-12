@@ -2,6 +2,7 @@ name: Feature Pipeline (Hourly)
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  HOPS_DISABLE_HOURLY_MATERIALIZATION: "true"
 
 on:
   schedule:

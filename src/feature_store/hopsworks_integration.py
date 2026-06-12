@@ -372,6 +372,8 @@ def save_features_to_hopsworks(
 
         def _should_materialize() -> bool:
             """Return True if enough time has passed since last materialization."""
+            if os.getenv("HOPS_DISABLE_HOURLY_MATERIALIZATION", "0").lower() in ("1", "true", "yes"):
+                return False
             if not lock_file.exists():
                 return True
             try:
