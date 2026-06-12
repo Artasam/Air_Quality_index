@@ -1,5 +1,8 @@
 name: Training Pipeline (Daily)
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 on:
   schedule:
     # Run daily at 02:00 UTC
