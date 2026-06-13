@@ -19,7 +19,7 @@ on:
 # ---------------------------------------------------------------------
 concurrency:
   group: feature-pipeline
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   fetch-realtime-data:
